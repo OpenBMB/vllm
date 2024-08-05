@@ -94,6 +94,7 @@ class MiniCPMVImagePixelInputs(TypedDict):
 
 MiniCPMVImageInputs = MiniCPMVImagePixelInputs
 
+
 DEFAULT_LN = partial(nn.LayerNorm, eps=1e-6)
 
 
@@ -432,21 +433,38 @@ def dummy_data_for_minicpmv(ctx: InputContext, seq_len: int):
 
 
 def input_processor_for_minicpmv(ctx: InputContext, llm_inputs: LLMInputs):
+    import pudb; pudb.set_trace()
     multi_modal_data = llm_inputs.get("multi_modal_data")
     if multi_modal_data is None or "image" not in multi_modal_data:
         return llm_inputs
+    images = multi_modal_data.get("image", None)
+    if isinstance(images, dict):
+        images = images.get("images")
+    if isinstance(images, Image.Image):
+        images = [images]
+
     model_config = ctx.model_config
     version = get_version_by_config(model_config.hf_config)
     tokenizer = cached_get_tokenizer(model_config.tokenizer,
                                      trust_remote_code=True)
-    image_processor = cached_get_image_processor(model_config.tokenizer)
+    image_processor = cached_get_image_processor(model_config.model)
 
     def get_placeholder(image_size: Tuple[int, int], num_image: int):
         if version == (2, 0) or version == (2, 5):
             return image_processor. \
                 get_slice_image_placeholder(image_size)
+        params = multi_modal_data.get("image")
+        use_image_id = params.get("use_image_id", None) \
+            if isinstance(params, dict) else None
+        max_slice_nums = params.get("max_slice_nums", None) \
+            if isinstance(params, dict) else None
         return image_processor. \
-            get_slice_image_placeholder(image_size, num_image)
+            get_slice_image_placeholder(
+                image_size, 
+                num_image, 
+                use_image_id=use_image_id, 
+                max_slice_nums=max_slice_nums
+            )
 
     prompt = llm_inputs.get("prompt")
     if prompt is None:
@@ -454,7 +472,6 @@ def input_processor_for_minicpmv(ctx: InputContext, llm_inputs: LLMInputs):
         prompt = tokenizer.decode(token_ids)
 
     pattern = "(<image>./</image>)"
-    images = multi_modal_data["image"]
     if isinstance(images, Image.Image):
         images = [images]
     image_tags = re.findall(pattern, prompt)
