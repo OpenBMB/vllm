@@ -113,15 +113,20 @@ class ImagePlugin(MultiModalPlugin):
     def _default_input_mapper(self, ctx: InputContext,
                               data: object) -> MultiModalInputs:
         model_config = ctx.model_config
-        if isinstance(data, (Image.Image, list)):
+        if isinstance(data, (Image.Image, list, dict)):
             image_processor = self._get_hf_image_processor(model_config)
             if image_processor is None:
                 raise RuntimeError("No HuggingFace processor is available "
                                    "to process the image object")
             try:
-                batch_data = image_processor \
-                    .preprocess(data, return_tensors="pt") \
-                    .data
+                if isinstance(data, (Image.Image)):
+                    batch_data = image_processor \
+                        .preprocess(data, return_tensors="pt") \
+                        .data
+                else: # dict
+                    batch_data = image_processor \
+                        .preprocess(**data, return_tensors="pt") \
+                        .data                
             except Exception:
                 logger.error("Failed to process image (%s)", data)
                 raise
